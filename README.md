@@ -39,6 +39,10 @@ QR validation and customer writes run through authenticated server routes. The
 service-role key is server-only. Shop application inserts are validated,
 honeypot-protected in the application route, and database-rate-limited.
 
+Browser geolocation is a proximity control, not tamper-proof proof of physical
+presence. Stores that require stronger fraud resistance should pair it with a
+rotating in-store QR or staff-assisted challenge in a later release.
+
 `supabase/seed.sql` is development-only and contains two fictional stores,
 twenty fictional products, different store inventories, active/disabled QR
 codes, sessions, recommendations, requests, and one application. Never run it

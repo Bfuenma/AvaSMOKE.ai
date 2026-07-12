@@ -22,6 +22,8 @@ export interface Shop {
   status: ShopStatus;
 }
 
+export type CustomerStore = Omit<Shop, "latitude" | "longitude">;
+
 export interface Product {
   id: string;
   brand_id: string | null;

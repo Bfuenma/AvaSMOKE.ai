@@ -106,13 +106,14 @@ insert into public.qr_codes (
 on conflict (id) do nothing;
 
 insert into public.shop_applications (
-  business_name, applicant_name, email, phone, address, number_of_locations,
+  id, business_name, applicant_name, email, phone, address, number_of_locations,
   website_or_social, message, status
 ) values (
-  'City Smoke Collective', 'Jordan Lee', 'jordan@example.test', '(312) 555-0198',
+  '88888888-8888-4888-8888-888888888888', 'City Smoke Collective', 'Jordan Lee', 'jordan@example.test', '(312) 555-0198',
   '1500 W Example Ave, Chicago, IL 60600', 2, 'https://example.test',
   'Interested in inventory-grounded customer recommendations.', 'new'
-);
+)
+on conflict (id) do nothing;
 
 insert into public.customer_sessions (
   id, anonymous_session_id, shop_id, qr_code_id, age_confirmed,
@@ -124,13 +125,15 @@ insert into public.customer_sessions (
   ('66666666-6666-4666-8666-666666666663','77777777-7777-4777-8777-777777777773','22222222-2222-4222-8222-222222222222','55555555-5555-4555-8555-555555555555',false,'granted',false,1.70,'desktop',now() - interval '3 days')
 on conflict (id) do nothing;
 
-insert into public.recommendations (session_id, shop_id, product_id, rank, score, reason, customer_clicked, customer_liked) values
-  ('66666666-6666-4666-8666-666666666661','11111111-1111-4111-8111-111111111111','b0000000-0000-4000-8000-000000000001',1,91.5,'Matches tropical flavor and strong cooling.',true,true),
-  ('66666666-6666-4666-8666-666666666661','11111111-1111-4111-8111-111111111111','b0000000-0000-4000-8000-000000000016',2,84.0,'A tropical alternative with medium cooling.',true,null),
-  ('66666666-6666-4666-8666-666666666662','11111111-1111-4111-8111-111111111111','b0000000-0000-4000-8000-000000000002',1,88.0,'Matches fruity and sweet preferences.',true,true);
+insert into public.recommendations (id, session_id, shop_id, product_id, rank, score, reason, customer_clicked, customer_liked) values
+  ('99999999-9999-4999-8999-999999999991','66666666-6666-4666-8666-666666666661','11111111-1111-4111-8111-111111111111','b0000000-0000-4000-8000-000000000001',1,91.5,'Matches tropical flavor and strong cooling.',true,true),
+  ('99999999-9999-4999-8999-999999999992','66666666-6666-4666-8666-666666666661','11111111-1111-4111-8111-111111111111','b0000000-0000-4000-8000-000000000016',2,84.0,'A tropical alternative with medium cooling.',true,null),
+  ('99999999-9999-4999-8999-999999999993','66666666-6666-4666-8666-666666666662','11111111-1111-4111-8111-111111111111','b0000000-0000-4000-8000-000000000002',1,88.0,'Matches fruity and sweet preferences.',true,true)
+on conflict (id) do nothing;
 
 insert into public.product_requests (
-  session_id, shop_id, requested_brand, requested_flavor, request_details, matching_product_found, source
+  id, session_id, shop_id, requested_brand, requested_flavor, request_details, matching_product_found, source
 ) values
-  ('66666666-6666-4666-8666-666666666661','11111111-1111-4111-8111-111111111111',null,'Mango','Strong cooling under $20',false,'match_flow'),
-  ('66666666-6666-4666-8666-666666666662','11111111-1111-4111-8111-111111111111',null,'Dessert','Smooth dessert profile',false,'text');
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1','66666666-6666-4666-8666-666666666661','11111111-1111-4111-8111-111111111111',null,'Mango','Strong cooling under $20',false,'match_flow'),
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2','66666666-6666-4666-8666-666666666662','11111111-1111-4111-8111-111111111111',null,'Dessert','Smooth dessert profile',false,'text')
+on conflict (id) do nothing;

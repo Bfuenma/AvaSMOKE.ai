@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { explainRecommendations } from "@/lib/ai/services";
-import { getStorefront } from "@/lib/data";
+import { getStorefront, toCustomerInventory } from "@/lib/data";
 import { isDevelopmentFallback } from "@/lib/env";
 import { topRecommendations } from "@/lib/recommendations";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -30,9 +30,44 @@ export async function POST(request: Request) {
   }
 
   const value = parsed.data;
+  const sessionId = (await cookies()).get("avasmoke_session")?.value;
+  const admin = isDevelopmentFallback ? null : createSupabaseAdminClient();
+  if (!isDevelopmentFallback && (!sessionId || !admin)) {
+    return NextResponse.json({ error: "Verified session required." }, { status: 401 });
+  }
   const storefront = await getStorefront(value.storeSlug, value.qrCode);
   if (!storefront) {
     return NextResponse.json({ error: "Store session is unavailable." }, { status: 404 });
+  }
+
+  let verifiedSessionId: string | undefined;
+  if (admin && sessionId) {
+    const expiresAfter = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+    const { data: session } = await admin
+      .from("customer_sessions")
+      .select("id")
+      .eq("id", sessionId)
+      .eq("shop_id", storefront.shop.id)
+      .eq("qr_code_id", storefront.qrCode.id)
+      .eq("location_verified", true)
+      .eq("age_confirmed", true)
+      .is("ended_at", null)
+      .gte("started_at", expiresAfter)
+      .maybeSingle();
+    if (!session) {
+      return NextResponse.json({ error: "Verified session required." }, { status: 403 });
+    }
+    const { count } = await admin
+      .from("recommendations")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", session.id);
+    if ((count ?? 0) >= 60) {
+      return NextResponse.json(
+        { error: "Recommendation limit reached for this session." },
+        { status: 429 },
+      );
+    }
+    verifiedSessionId = session.id;
   }
 
   const ranked = topRecommendations(storefront.inventory, value.preferences);
@@ -45,23 +80,9 @@ export async function POST(request: Request) {
       "One of the closest available matches at this store.",
   }));
 
-  if (!isDevelopmentFallback && recommendations.length) {
-    const sessionId = (await cookies()).get("avasmoke_session")?.value;
-    const admin = createSupabaseAdminClient();
-    if (sessionId && admin) {
-      const { data: session } = await admin
-        .from("customer_sessions")
-        .select("id, shop_id, location_verified, age_confirmed")
-        .eq("id", sessionId)
-        .eq("shop_id", storefront.shop.id)
-        .eq("location_verified", true)
-        .eq("age_confirmed", true)
-        .maybeSingle();
-      if (!session) {
-        return NextResponse.json({ error: "Verified session required." }, { status: 403 });
-      }
-      await admin.from("customer_preferences").upsert({
-        session_id: session.id,
+  if (admin && verifiedSessionId && recommendations.length) {
+    const preferenceResult = await admin.from("customer_preferences").upsert({
+        session_id: verifiedSessionId,
         preferred_flavor_families: value.preferences.flavorFamilies,
         cooling_preference: value.preferences.cooling ?? null,
         strength_preference: value.preferences.strength ?? null,
@@ -69,9 +90,9 @@ export async function POST(request: Request) {
         budget_max: value.preferences.budgetMax ?? null,
         desired_puff_count: value.preferences.desiredPuffCount ?? null,
       }, { onConflict: "session_id" });
-      await admin.from("recommendations").insert(
+    const recommendationResult = await admin.from("recommendations").insert(
         recommendations.map((result, index) => ({
-          session_id: session.id,
+          session_id: verifiedSessionId,
           shop_id: storefront.shop.id,
           product_id: result.item.product.id,
           rank: index + 1,
@@ -79,8 +100,21 @@ export async function POST(request: Request) {
           reason: result.explanation,
         })),
       );
+    if (preferenceResult.error || recommendationResult.error) {
+      return NextResponse.json(
+        { error: "Recommendations could not be recorded." },
+        { status: 503 },
+      );
     }
   }
 
-  return NextResponse.json({ recommendations });
+  const customerItems = toCustomerInventory(
+    recommendations.map((result) => result.item),
+  );
+  return NextResponse.json({
+    recommendations: recommendations.map((result, index) => ({
+      ...result,
+      item: customerItems[index],
+    })),
+  });
 }

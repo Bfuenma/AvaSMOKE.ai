@@ -9,6 +9,7 @@ import {
   getAiMode,
   getLanguageModel,
 } from "@/lib/ai/provider";
+import { formatCurrency } from "@/lib/utils";
 
 export const extractedProductSchema = z.object({
   brand: z.string().nullable(),
@@ -60,6 +61,8 @@ export async function extractProductsFromImages(imageUrls: string[]) {
   const { output } = await generateText({
     model,
     output: Output.array({ element: extractedProductSchema }),
+    maxOutputTokens: 1800,
+    abortSignal: AbortSignal.timeout(30_000),
     system:
       "Extract only packaging details clearly visible in the supplied retail product images. Never infer uncertain specifications. Return one record per identifiable product.",
     messages: [
@@ -99,25 +102,36 @@ export async function explainRecommendations(
   const schema = z.array(
     z.object({
       productId: z.string(),
-      explanation: z.string().max(180),
+      reasonIndexes: z.array(z.number().int().nonnegative()).max(3),
     }),
   );
   const { output } = await generateText({
     model,
     output: Output.object({ schema }),
     system: AI_GROUNDING_RULES,
-    prompt: `Explain these already-scored recommendations in one short sentence each. Do not change the ranking.\n${JSON.stringify(
-      recommendations.map(({ item, score, reasons }) => ({
+    maxOutputTokens: 300,
+    abortSignal: AbortSignal.timeout(15_000),
+    prompt: `Select up to three supplied reason indexes for each product. Never write prose and do not change product IDs.\n${JSON.stringify(
+      recommendations.map(({ item, reasons }) => ({
         productId: item.product.id,
-        product: item.product,
-        price: item.sale_price ?? item.price,
-        stock: item.stock_status,
-        score,
         reasons,
       })),
     )}`,
   });
-  return output;
+  return recommendations.map((result) => {
+    const selected = output.find(
+      (item) => item.productId === result.item.product.id,
+    );
+    const reasons = (selected?.reasonIndexes ?? [0, 1, 2])
+      .map((index) => result.reasons[index])
+      .filter((reason): reason is string => Boolean(reason));
+    return {
+      productId: result.item.product.id,
+      explanation: reasons.length
+        ? `A close match because it ${reasons.join(", ")}.`
+        : "This is one of the closest available matches at this store.",
+    };
+  });
 }
 
 export async function answerInventoryQuestion(
@@ -140,10 +154,17 @@ export async function answerInventoryQuestion(
     };
   }
 
-  const { text } = await generateText({
+  const selectionSchema = z.object({
+    selectedProductIds: z.array(z.string()).max(3),
+    followUpQuestion: z.string().max(100).nullable(),
+  });
+  const { output } = await generateText({
     model,
+    output: Output.object({ schema: selectionSchema }),
     system: AI_GROUNDING_RULES,
-    prompt: `CURRENT_STORE_INVENTORY:\n${JSON.stringify(
+    maxOutputTokens: 250,
+    abortSignal: AbortSignal.timeout(15_000),
+    prompt: `Select up to three product IDs that answer the question. Return only IDs from the supplied inventory. If essential preference information is missing, return a short follow-up question and no IDs.\nCURRENT_STORE_INVENTORY:\n${JSON.stringify(
       available.map((item) => ({
         id: item.product.id,
         brand: item.product.brand_name,
@@ -158,5 +179,34 @@ export async function answerInventoryQuestion(
       })),
     )}\n\nCUSTOMER QUESTION: ${question}`,
   });
-  return { mode: "live" as const, answer: text };
+  const allowedIds = new Set(available.map((item) => item.product.id));
+  const selected = output.selectedProductIds
+    .filter((id) => allowedIds.has(id))
+    .map((id) => available.find((item) => item.product.id === id))
+    .filter((item): item is InventoryItem => Boolean(item));
+  if (!selected.length) {
+    return {
+      mode: "live" as const,
+      answer:
+        output.followUpQuestion ??
+        "I could not find a supported match in this store’s available inventory.",
+    };
+  }
+  const lines = selected.map((item) => {
+    const details = [
+      formatCurrency(item.sale_price ?? item.price),
+      item.product.puff_count
+        ? `${item.product.puff_count.toLocaleString()} puffs`
+        : null,
+      item.product.cooling_level
+        ? `cooling ${item.product.cooling_level}/10`
+        : null,
+      item.stock_status === "low_stock" ? "low stock" : "in stock",
+    ].filter(Boolean);
+    return `${item.product.brand_name} ${item.product.flavor_name ?? item.product.product_name} — ${details.join(", ")}`;
+  });
+  return {
+    mode: "live" as const,
+    answer: `Closest available option${lines.length > 1 ? "s" : ""}: ${lines.join("; ")}.`,
+  };
 }

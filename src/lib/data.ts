@@ -8,7 +8,13 @@ import {
 import { isDevelopmentFallback } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { InventoryItem, Product, QRCode, Shop } from "@/lib/types";
+import type {
+  CustomerStore,
+  InventoryItem,
+  Product,
+  QRCode,
+  Shop,
+} from "@/lib/types";
 
 type InventoryQueryRow = Omit<InventoryItem, "product"> & {
   product: Omit<Product, "brand_name"> & {
@@ -31,6 +37,63 @@ export interface StorefrontPayload {
   qrCode: QRCode;
   inventory: InventoryItem[];
   developmentMode: boolean;
+}
+
+export function toCustomerInventory(items: InventoryItem[]): InventoryItem[] {
+  return items.map((item) => ({
+    id: item.id,
+    shop_id: item.shop_id,
+    product_id: item.product_id,
+    internal_sku: null,
+    price: item.price,
+    sale_price: item.sale_price,
+    stock_status: item.stock_status,
+    quantity: null,
+    featured: item.featured,
+    staff_pick: item.staff_pick,
+    recommendation_priority: 0,
+    product: {
+      id: item.product.id,
+      brand_id: null,
+      brand_name: item.product.brand_name,
+      product_name: item.product.product_name,
+      flavor_name: item.product.flavor_name,
+      category: item.product.category,
+      nicotine_percentage: item.product.nicotine_percentage,
+      nicotine_mg: item.product.nicotine_mg,
+      puff_count: item.product.puff_count,
+      flavor_family: item.product.flavor_family,
+      sweetness_level: item.product.sweetness_level,
+      cooling_level: item.product.cooling_level,
+      hit_strength: item.product.hit_strength,
+      expected_duration_text: item.product.expected_duration_text,
+      rechargeable: item.product.rechargeable,
+      device_type: item.product.device_type,
+      description: item.product.description,
+      primary_image_url: item.product.primary_image_url,
+      verification_status: item.product.verification_status,
+      active: item.product.active,
+    },
+  }));
+}
+
+export function toCustomerStore(shop: Shop): CustomerStore {
+  return {
+    id: shop.id,
+    name: shop.name,
+    slug: shop.slug,
+    description: shop.description,
+    email: shop.email,
+    phone: shop.phone,
+    address_line_1: shop.address_line_1,
+    address_line_2: shop.address_line_2,
+    city: shop.city,
+    state: shop.state,
+    postal_code: shop.postal_code,
+    allowed_radius_miles: shop.allowed_radius_miles,
+    business_hours: shop.business_hours,
+    status: shop.status,
+  };
 }
 
 export async function getStorefront(
@@ -97,6 +160,10 @@ export async function getAdminOverview() {
         verifiedSessions: 1924,
         conversations: 628,
         recommendations: 1432,
+        inventoryGaps: 18,
+        matchCompletions: 1132,
+        outsideRadius: 203,
+        positiveFeedbackRate: 82,
       },
       stores: [
         { name: developmentShop.name, scans: 1284, conversion: 68 },
@@ -116,17 +183,23 @@ export async function getAdminOverview() {
     sessions,
     conversations,
     recommendations,
+    productRequests,
+    feedback,
     topProducts,
   ] = await Promise.all([
     supabase.from("shops").select("id", { count: "exact", head: true }).eq("status", "active"),
     supabase.from("shop_applications").select("id", { count: "exact", head: true }).in("status", ["new", "reviewing"]),
     supabase.from("customer_sessions").select("id, location_verified"),
     supabase.from("conversations").select("id", { count: "exact", head: true }).eq("role", "customer"),
-    supabase.from("recommendations").select("id", { count: "exact", head: true }),
+    supabase.from("recommendations").select("id, session_id"),
+    supabase.from("product_requests").select("id", { count: "exact", head: true }).eq("matching_product_found", false),
+    supabase.from("customer_feedback").select("helpful"),
     supabase.from("shop_inventory").select("*, product:products(*, brand:brands(name))").in("stock_status", ["in_stock", "low_stock"]).limit(4),
   ]);
 
   const sessionRows = sessions.data ?? [];
+  const recommendationRows = recommendations.data ?? [];
+  const feedbackRows = feedback.data ?? [];
   return {
     metrics: {
       activeStores: stores.count ?? 0,
@@ -134,7 +207,19 @@ export async function getAdminOverview() {
       totalScans: sessionRows.length,
       verifiedSessions: sessionRows.filter((row) => row.location_verified).length,
       conversations: conversations.count ?? 0,
-      recommendations: recommendations.count ?? 0,
+      recommendations: recommendationRows.length,
+      inventoryGaps: productRequests.count ?? 0,
+      matchCompletions: new Set(
+        recommendationRows.map((row) => row.session_id),
+      ).size,
+      outsideRadius: sessionRows.filter((row) => !row.location_verified).length,
+      positiveFeedbackRate: feedbackRows.length
+        ? Math.round(
+            (feedbackRows.filter((row) => row.helpful).length /
+              feedbackRows.length) *
+              100,
+          )
+        : 0,
     },
     stores: [],
     scanSeries: [],
@@ -143,4 +228,72 @@ export async function getAdminOverview() {
       .map((row) => mapInventoryRow(row as unknown as InventoryQueryRow)),
     developmentMode: false,
   };
+}
+
+export async function getAdminSectionRecords(section: string): Promise<unknown[]> {
+  if (isDevelopmentFallback) return [];
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return [];
+
+  if (section === "stores") {
+    const { data } = await supabase
+      .from("shops")
+      .select("*")
+      .order("created_at", { ascending: false });
+    return data ?? [];
+  }
+  if (section === "inventory") {
+    const { data } = await supabase
+      .from("shop_inventory")
+      .select("*, product:products(*, brand:brands(name))")
+      .order("updated_at", { ascending: false })
+      .limit(500);
+    return (data ?? [])
+      .filter((row) => row.product)
+      .map((row) => mapInventoryRow(row as unknown as InventoryQueryRow));
+  }
+  if (section === "products") {
+    const { data } = await supabase
+      .from("products")
+      .select("*, brand:brands(name)")
+      .order("updated_at", { ascending: false })
+      .limit(500);
+    return (data ?? []).map((row) => {
+      const brand = row.brand as { name: string } | null;
+      return { ...row, brand_name: brand?.name ?? "Unknown brand" };
+    });
+  }
+  if (section === "qr-codes") {
+    const { data } = await supabase
+      .from("qr_codes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    return data ?? [];
+  }
+  if (section === "applications") {
+    const { data } = await supabase
+      .from("shop_applications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    return data ?? [];
+  }
+  if (section === "conversations") {
+    const { data } = await supabase
+      .from("conversations")
+      .select("*, shop:shops(name)")
+      .order("created_at", { ascending: false })
+      .limit(200);
+    return data ?? [];
+  }
+  if (section === "users") {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id, email, full_name, role, status")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    return data ?? [];
+  }
+  return [];
 }

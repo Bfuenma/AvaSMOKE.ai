@@ -161,12 +161,19 @@ export async function POST(request: Request) {
     }).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (value.shopId) {
-      await supabase.from("shop_inventory").insert({
+      const { error: inventoryError } = await supabase.from("shop_inventory").insert({
         shop_id: value.shopId,
         product_id: product.id,
         price: value.price ?? null,
         stock_status: value.stockStatus,
       });
+      if (inventoryError) {
+        await supabase.from("products").delete().eq("id", product.id);
+        return NextResponse.json(
+          { error: "The product could not be assigned to this store." },
+          { status: 500 },
+        );
+      }
     }
     return NextResponse.json({ data: product }, { status: 201 });
   }

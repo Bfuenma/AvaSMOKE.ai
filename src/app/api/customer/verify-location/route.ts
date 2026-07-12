@@ -9,10 +9,16 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 const schema = z.object({
   storeSlug: z.string().min(1).max(120),
   qrCode: z.string().min(8).max(160),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  developmentTest: z.boolean().default(false),
   permissionStatus: z.enum(["granted", "denied", "unavailable"]).default("granted"),
-});
+}).refine(
+  (value) =>
+    value.developmentTest ||
+    (value.latitude !== undefined && value.longitude !== undefined),
+  "Coordinates are required.",
+);
 
 export async function POST(request: Request) {
   const parsed = schema.safeParse(await request.json());
@@ -29,8 +35,17 @@ export async function POST(request: Request) {
   const radius =
     storefront.qrCode.scan_radius_override ??
     storefront.shop.allowed_radius_miles;
+  if (value.developmentTest && !isDevelopmentFallback) {
+    return NextResponse.json({ error: "Development test mode is unavailable." }, { status: 403 });
+  }
+  const customerCoordinates = value.developmentTest
+    ? {
+        latitude: storefront.shop.latitude,
+        longitude: storefront.shop.longitude,
+      }
+    : { latitude: value.latitude!, longitude: value.longitude! };
   const result = verifyRadius(
-    { latitude: value.latitude, longitude: value.longitude },
+    customerCoordinates,
     { latitude: storefront.shop.latitude, longitude: storefront.shop.longitude },
     radius,
   );
@@ -40,7 +55,7 @@ export async function POST(request: Request) {
     const admin = createSupabaseAdminClient();
     if (!admin) return NextResponse.json({ error: "Session service is unavailable." }, { status: 503 });
     const userAgent = request.headers.get("user-agent") ?? "";
-    await admin.from("customer_sessions").insert({
+    const { error: insertError } = await admin.from("customer_sessions").insert({
       id: sessionId,
       anonymous_session_id: crypto.randomUUID(),
       shop_id: storefront.shop.id,
@@ -52,6 +67,12 @@ export async function POST(request: Request) {
       device_type: /mobile|android|iphone/i.test(userAgent) ? "mobile" : "desktop",
       referrer: request.headers.get("referer"),
     });
+    if (insertError) {
+      return NextResponse.json(
+        { error: "The customer session could not be created." },
+        { status: 503 },
+      );
+    }
   }
 
   const response = NextResponse.json({

@@ -23,25 +23,51 @@ export async function POST(request: Request) {
 
   const sessionId = (await cookies()).get("avasmoke_session")?.value;
   const admin = isDevelopmentFallback ? null : createSupabaseAdminClient();
+  let verifiedSessionId: string | undefined;
   if (!isDevelopmentFallback) {
     if (!sessionId || !admin) return NextResponse.json({ error: "Session expired." }, { status: 401 });
+    const expiresAfter = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
     const { data: session } = await admin
       .from("customer_sessions")
       .select("id")
       .eq("id", sessionId)
       .eq("shop_id", storefront.shop.id)
+      .eq("qr_code_id", storefront.qrCode.id)
       .eq("location_verified", true)
       .eq("age_confirmed", true)
+      .is("ended_at", null)
+      .gte("started_at", expiresAfter)
       .maybeSingle();
     if (!session) return NextResponse.json({ error: "Verified session required." }, { status: 403 });
+    const { count } = await admin
+      .from("conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", session.id)
+      .eq("role", "customer");
+    if ((count ?? 0) >= 20) {
+      return NextResponse.json(
+        { error: "Conversation limit reached for this session." },
+        { status: 429 },
+      );
+    }
+    verifiedSessionId = session.id;
   }
 
-  const result = await answerInventoryQuestion(parsed.data.message, storefront.inventory);
-  if (admin && sessionId) {
-    await admin.from("conversations").insert([
-      { session_id: sessionId, shop_id: storefront.shop.id, role: "customer", message: parsed.data.message },
-      { session_id: sessionId, shop_id: storefront.shop.id, role: "assistant", message: result.answer, metadata: { mode: result.mode } },
+  const result = await answerInventoryQuestion(
+    parsed.data.message,
+    storefront.inventory.slice(0, 100),
+  );
+  if (admin && verifiedSessionId) {
+    const { error } = await admin.from("conversations").insert([
+      { session_id: verifiedSessionId, shop_id: storefront.shop.id, role: "customer", message: parsed.data.message },
+      { session_id: verifiedSessionId, shop_id: storefront.shop.id, role: "assistant", message: result.answer, metadata: { mode: result.mode } },
     ]);
+    if (error) {
+      return NextResponse.json(
+        { error: "The conversation could not be recorded." },
+        { status: 503 },
+      );
+    }
   }
   return NextResponse.json(result);
 }

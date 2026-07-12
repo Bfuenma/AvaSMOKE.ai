@@ -30,6 +30,8 @@ export function ProductUploadDropzone() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"live" | "mock">();
   const [error, setError] = useState<string>();
+  const [shopId, setShopId] = useState("");
+  const [saveStatus, setSaveStatus] = useState<string>();
 
   function receiveFiles(list: FileList | null) {
     const accepted = Array.from(list ?? []).filter((file) =>
@@ -61,6 +63,65 @@ export function ProductUploadDropzone() {
     setMode(result.mode);
     setProducts(
       result.products.map((product) => ({ ...product, selected: true })),
+    );
+  }
+
+  function updateProduct(
+    index: number,
+    updates: Partial<ReviewedProduct>,
+  ) {
+    setProducts((current) =>
+      current.map((product, productIndex) =>
+        productIndex === index ? { ...product, ...updates } : product,
+      ),
+    );
+  }
+
+  async function saveProducts() {
+    const selected = products.filter((product) => product.selected);
+    if (!selected.length) {
+      setSaveStatus("Select at least one extracted product.");
+      return;
+    }
+    setLoading(true);
+    setSaveStatus(undefined);
+    for (const product of selected) {
+      const response = await fetch("/api/admin/manage", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "product.confirm",
+          ...(shopId && { shopId }),
+          brand: product.brand,
+          productName:
+            product.productLine || product.flavor || "Unnamed product",
+          flavorName: product.flavor,
+          category: product.category || "Uncategorized",
+          puffCount: product.puffCount,
+          nicotinePercentage: product.nicotinePercentage,
+          rechargeable: product.rechargeable ?? false,
+          deviceType: product.deviceType,
+          aiExtractedData: product,
+          stockStatus: "in_stock",
+        }),
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        duplicate?: boolean;
+      };
+      if (!response.ok) {
+        setSaveStatus(
+          result.duplicate
+            ? "A possible duplicate was found. Use catalog search to select the existing product."
+            : result.error ?? "A product could not be saved.",
+        );
+        setLoading(false);
+        return;
+      }
+    }
+    setLoading(false);
+    setSaveStatus(
+      `${selected.length} product${selected.length === 1 ? "" : "s"} saved for admin verification.`,
     );
   }
 
@@ -143,29 +204,45 @@ export function ProductUploadDropzone() {
                   Correct uncertain details before adding inventory.
                 </p>
               </div>
-              <Button variant="outline" size="sm">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setProducts((current) => {
+                    const select = current.some((product) => !product.selected);
+                    return current.map((product) => ({
+                      ...product,
+                      selected: select,
+                    }));
+                  })
+                }
+              >
                 Select all
               </Button>
+            </div>
+            <div className="space-y-2 rounded-2xl border p-4">
+              <Label htmlFor="upload-shop-id">Assign selected products to store ID (optional)</Label>
+              <Input id="upload-shop-id" value={shopId} onChange={(event) => setShopId(event.target.value)} placeholder="Leave blank to save only to the master catalog" />
             </div>
             <div className="grid gap-4 xl:grid-cols-2">
               {products.map((product, index) => (
                 <Card key={index} className="rounded-2xl bg-card/70">
                   <CardContent className="grid gap-4 p-5 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Brand</Label>
-                      <Input defaultValue={product.brand ?? ""} placeholder="Required" />
+                      <Label htmlFor={`brand-${index}`}>Brand</Label>
+                      <Input id={`brand-${index}`} value={product.brand ?? ""} onChange={(event) => updateProduct(index, { brand: event.target.value })} placeholder="Required" />
                     </div>
                     <div className="space-y-2">
-                      <Label>Product line</Label>
-                      <Input defaultValue={product.productLine ?? ""} />
+                      <Label htmlFor={`product-line-${index}`}>Product line</Label>
+                      <Input id={`product-line-${index}`} value={product.productLine ?? ""} onChange={(event) => updateProduct(index, { productLine: event.target.value })} />
                     </div>
                     <div className="space-y-2">
-                      <Label>Flavor</Label>
-                      <Input defaultValue={product.flavor ?? ""} />
+                      <Label htmlFor={`flavor-${index}`}>Flavor</Label>
+                      <Input id={`flavor-${index}`} value={product.flavor ?? ""} onChange={(event) => updateProduct(index, { flavor: event.target.value })} />
                     </div>
                     <div className="space-y-2">
-                      <Label>Puff count</Label>
-                      <Input type="number" defaultValue={product.puffCount ?? ""} />
+                      <Label htmlFor={`puff-count-${index}`}>Puff count</Label>
+                      <Input id={`puff-count-${index}`} type="number" value={product.puffCount ?? ""} onChange={(event) => updateProduct(index, { puffCount: event.target.value ? Number(event.target.value) : null })} />
                     </div>
                     <div className="sm:col-span-2 flex items-center justify-between">
                       <Badge
@@ -186,8 +263,9 @@ export function ProductUploadDropzone() {
                 </Card>
               ))}
             </div>
+            {saveStatus && <Alert><AlertDescription>{saveStatus}</AlertDescription></Alert>}
             <div className="sticky bottom-4 flex justify-end">
-              <Button size="lg" className="rounded-xl shadow-2xl">
+              <Button size="lg" className="rounded-xl shadow-2xl" onClick={saveProducts} disabled={loading}>
                 Confirm and add selected products
               </Button>
             </div>
@@ -213,10 +291,10 @@ export function ProductUploadDropzone() {
         <Card className="rounded-2xl">
           <CardContent className="grid gap-5 p-6 sm:grid-cols-2">
             {["Brand", "Product name", "Flavor", "Category", "Puff count", "Nicotine percentage"].map(
-              (label) => (
+              (label, index) => (
                 <div className="space-y-2" key={label}>
-                  <Label>{label}</Label>
-                  <Input />
+                  <Label htmlFor={`manual-field-${index}`}>{label}</Label>
+                  <Input id={`manual-field-${index}`} />
                 </div>
               ),
             )}

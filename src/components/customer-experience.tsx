@@ -27,10 +27,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import type { CustomerPreferences, InventoryItem, ScoredRecommendation, Shop } from "@/lib/types";
+import type {
+  CustomerPreferences,
+  CustomerStore,
+  InventoryItem,
+  ScoredRecommendation,
+} from "@/lib/types";
 import { cn, formatCurrency, titleCase } from "@/lib/utils";
 
-type Flow = "location" | "blocked" | "denied" | "age" | "welcome" | "match" | "results" | "browse" | "chat" | "camera" | "compare" | "underage";
+type Flow = "location" | "blocked" | "denied" | "age" | "welcome" | "match" | "results" | "browse" | "chat" | "camera" | "compare" | "underage" | "no-inventory";
 type RecommendationResult = ScoredRecommendation & { explanation: string };
 
 export function QuickChoiceButton({
@@ -137,7 +142,7 @@ function LocationPermissionCard({
   developmentMode,
   onTest,
 }: {
-  store: Shop;
+  store: CustomerStore;
   loading: boolean;
   onAllow: () => void;
   developmentMode: boolean;
@@ -325,7 +330,7 @@ function ChatView({ storeSlug, qrCode }: { storeSlug: string; qrCode: string }) 
         {messages.map((item, index) => <div key={index} className={cn("max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6", item.role === "customer" ? "ms-auto bg-violet-600 text-white" : "border bg-card")}>{item.text}</div>)}
         {loading && <div className="w-fit rounded-2xl border bg-card px-4 py-3"><Loader2 className="size-4 animate-spin" /></div>}
       </div>
-      <div className="sticky bottom-3 flex gap-2 rounded-2xl border bg-[#120d1c]/95 p-2 backdrop-blur-xl"><Input value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") send(); }} placeholder="Ask about products in this store" className="h-11 border-0 bg-transparent" /><Button size="icon" className="size-11 shrink-0 rounded-xl" onClick={() => send()} aria-label="Send message"><ArrowRight /></Button></div>
+      <div className="sticky bottom-3 flex gap-2 rounded-2xl border bg-[#120d1c]/95 p-2 backdrop-blur-xl"><Input aria-label="Ask AvaSmoke.Ai about products in this store" value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") send(); }} placeholder="Ask about products in this store" className="h-11 border-0 bg-transparent" /><Button size="icon" className="size-11 shrink-0 rounded-xl" onClick={() => send()} aria-label="Send message"><ArrowRight /></Button></div>
     </div>
   );
 }
@@ -353,9 +358,51 @@ function BrowseView({
   );
 }
 
-function CameraView() {
+function CameraView({
+  storeSlug,
+  qrCode,
+}: {
+  storeSlug: string;
+  qrCode: string;
+}) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>();
+  const [identified, setIdentified] = useState<{
+    brand: string | null;
+    productLine: string | null;
+    flavor: string | null;
+    confidence: number;
+  }>();
+  const [matches, setMatches] = useState<InventoryItem[]>([]);
+
+  async function searchPhoto() {
+    if (!file) return;
+    setLoading(true);
+    setError(undefined);
+    const formData = new FormData();
+    formData.append("image", file);
+    formData.append("storeSlug", storeSlug);
+    formData.append("qrCode", qrCode);
+    const response = await fetch("/api/customer/photo-search", {
+      method: "POST",
+      body: formData,
+    });
+    const result = (await response.json()) as {
+      error?: string;
+      identified?: typeof identified;
+      matches?: Array<{ item: InventoryItem }>;
+    };
+    setLoading(false);
+    if (!response.ok) {
+      setError(result.error ?? "Image recognition failed.");
+      return;
+    }
+    setIdentified(result.identified);
+    setMatches((result.matches ?? []).map((match) => match.item));
+  }
+
   return (
     <div className="mx-auto max-w-md px-5 py-7">
       <p className="text-sm text-violet-300">Photo search</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Find something similar</h1>
@@ -364,7 +411,10 @@ function CameraView() {
         <div><div className="mx-auto grid size-14 place-items-center rounded-2xl bg-violet-500/10 text-violet-300">{file ? <Check /> : <Camera />}</div><p className="mt-4 font-medium">{file ? file.name : "Take or upload a photo"}</p><p className="mt-2 text-xs text-muted-foreground">JPEG, PNG, or WebP · up to 8 MB</p></div>
       </button>
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" className="hidden" onChange={(event) => setFile(event.target.files?.[0])} />
-      {file && <Button size="lg" className="mt-4 h-13 w-full rounded-2xl"><Sparkles /> Identify and search this store</Button>}
+      {file && <Button size="lg" className="mt-4 h-13 w-full rounded-2xl" onClick={searchPhoto} disabled={loading}>{loading ? <Loader2 className="animate-spin" /> : <Sparkles />} {loading ? "Identifying…" : "Identify and search this store"}</Button>}
+      {error && <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/5 p-3 text-sm text-red-200">{error}</p>}
+      {identified && <div className="mt-6 rounded-2xl border p-4"><p className="text-xs text-muted-foreground">Photo identification · {Math.round(identified.confidence * 100)}% confidence</p><p className="mt-2 text-sm">{[identified.brand, identified.productLine, identified.flavor].filter(Boolean).join(" · ") || "No confident product identification"}</p>{identified.confidence < 0.65 && <p className="mt-2 text-xs text-amber-200">Confidence is low. Review the possible store matches below.</p>}</div>}
+      {matches.length > 0 && <div className="mt-6 space-y-4"><h2 className="font-medium">Closest options available here</h2>{matches.map((item) => <ProductCard key={item.id} item={item} />)}</div>}
       <p className="mt-5 text-xs leading-5 text-muted-foreground">Results state confidence and offer possible matches when identification is uncertain. Images may be processed by the configured AI provider.</p>
     </div>
   );
@@ -378,12 +428,10 @@ function CompareView({ items }: { items: InventoryItem[] }) {
 
 export function CustomerExperience({
   store,
-  inventory,
   qrCode,
   developmentMode,
 }: {
-  store: Shop;
-  inventory: InventoryItem[];
+  store: CustomerStore;
   qrCode: string;
   developmentMode: boolean;
 }) {
@@ -393,11 +441,31 @@ export function CustomerExperience({
   const [recommendations, setRecommendations] = useState<RecommendationResult[]>([]);
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [compare, setCompare] = useState<InventoryItem[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [accessError, setAccessError] = useState<string>();
 
-  async function verify(latitude: number, longitude: number) {
-    const response = await fetch("/api/customer/verify-location", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ storeSlug: store.slug, qrCode, latitude, longitude, permissionStatus: "granted" }) });
+  async function verify(
+    coordinates?: { latitude: number; longitude: number },
+    developmentTest = false,
+  ) {
+    const response = await fetch("/api/customer/verify-location", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        storeSlug: store.slug,
+        qrCode,
+        ...coordinates,
+        developmentTest,
+        permissionStatus: "granted",
+      }),
+    });
     const result = await response.json() as { verified?: boolean; distanceMiles?: number };
     setLocationLoading(false);
+    if (!response.ok) {
+      setAccessError("Location verification is temporarily unavailable.");
+      setFlow("denied");
+      return;
+    }
     setDistance(result.distanceMiles);
     setFlow(result.verified ? "age" : "blocked");
   }
@@ -406,17 +474,35 @@ export function CustomerExperience({
     setLocationLoading(true);
     if (!navigator.geolocation) { setLocationLoading(false); setFlow("denied"); return; }
     navigator.geolocation.getCurrentPosition(
-      (position) => verify(position.coords.latitude, position.coords.longitude),
+      (position) =>
+        verify({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }),
       () => { setLocationLoading(false); setFlow("denied"); },
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
     );
   }
 
   async function confirmAge(confirmed: boolean) {
-    await fetch("/api/customer/age", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ confirmed }) });
+    const response = await fetch("/api/customer/age", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirmed, storeSlug: store.slug, qrCode }),
+    });
+    const result = (await response.json()) as {
+      inventory?: InventoryItem[];
+      error?: string;
+    };
+    if (!response.ok) {
+      setAccessError(result.error ?? "Your session could not be confirmed.");
+      setFlow("denied");
+      return;
+    }
     if (confirmed) {
       sessionStorage.setItem(`avasmoke-age-${qrCode}`, "true");
-      setFlow("welcome");
+      setInventory(result.inventory ?? []);
+      setFlow(result.inventory?.length ? "welcome" : "no-inventory");
     } else setFlow("underage");
   }
 
@@ -439,17 +525,18 @@ export function CustomerExperience({
   return (
     <main className="min-h-screen">
       <MobilePageHeader storeName={store.name} back={needsBack ? () => setFlow("welcome") : undefined} />
-      {flow === "location" && <LocationPermissionCard store={store} loading={locationLoading} onAllow={locate} developmentMode={developmentMode} onTest={() => { setLocationLoading(true); verify(store.latitude, store.longitude); }} />}
-      {flow === "denied" && <div className="mx-auto max-w-md px-5 py-16 text-center"><MapPin className="mx-auto size-12 text-violet-300" /><h1 className="mt-5 text-2xl font-semibold">Location is required</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">Enable location access in your browser settings so we can verify this store-specific experience.</p><Button className="mt-7 w-full" onClick={locate}><RotateCcw /> Try again</Button></div>}
-      {flow === "blocked" && <div className="mx-auto max-w-md px-5 py-16 text-center"><MapPin className="mx-auto size-12 text-violet-300" /><h1 className="mt-5 text-2xl font-semibold">Visit {store.name} to continue</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">This AvaSmoke.Ai experience is available while visiting {store.name}. {distance != null && `You appear to be ${distance} miles away.`}</p><div className="mt-7 grid gap-3"><Button asChild><a href={`https://www.google.com/maps/search/?api=1&query=${store.latitude},${store.longitude}`} target="_blank" rel="noreferrer"><Compass /> Get Directions</a></Button><Button variant="outline" onClick={locate}><RotateCcw /> Try Again</Button></div><p className="mt-5 text-xs text-muted-foreground">We store only the calculated distance and verification result, not your precise coordinates.</p></div>}
+      {flow === "location" && <LocationPermissionCard store={store} loading={locationLoading} onAllow={locate} developmentMode={developmentMode} onTest={() => { setLocationLoading(true); verify(undefined, true); }} />}
+      {flow === "denied" && <div className="mx-auto max-w-md px-5 py-16 text-center"><MapPin className="mx-auto size-12 text-violet-300" /><h1 className="mt-5 text-2xl font-semibold">Location is required</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">{accessError ?? "Enable location access in your browser settings so we can verify this store-specific experience."}</p><Button className="mt-7 w-full" onClick={locate}><RotateCcw /> Try again</Button></div>}
+      {flow === "blocked" && <div className="mx-auto max-w-md px-5 py-16 text-center"><MapPin className="mx-auto size-12 text-violet-300" /><h1 className="mt-5 text-2xl font-semibold">Visit {store.name} to continue</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">This AvaSmoke.Ai experience is available while visiting {store.name}. {distance != null && `You appear to be ${distance} miles away.`}</p><div className="mt-7 grid gap-3"><Button asChild><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${store.address_line_1}, ${store.city}, ${store.state} ${store.postal_code}`)}`} target="_blank" rel="noreferrer"><Compass /> Get Directions</a></Button><Button variant="outline" onClick={locate}><RotateCcw /> Try Again</Button></div><p className="mt-5 text-xs text-muted-foreground">We store only the calculated distance and verification result, not your precise coordinates.</p></div>}
       {flow === "age" && <AgeGate onConfirm={() => confirmAge(true)} onDecline={() => confirmAge(false)} />}
       {flow === "underage" && <div className="mx-auto max-w-md px-5 py-20 text-center"><ShieldCheck className="mx-auto size-11 text-muted-foreground" /><h1 className="mt-5 text-2xl font-semibold">Access unavailable</h1><p className="mt-3 text-sm text-muted-foreground">AvaSmoke.Ai is only available to adults 21 or older.</p></div>}
+      {flow === "no-inventory" && <div className="mx-auto max-w-md px-5 py-20 text-center"><ShoppingBag className="mx-auto size-11 text-muted-foreground" /><h1 className="mt-5 text-2xl font-semibold">No inventory is available right now</h1><p className="mt-3 text-sm leading-6 text-muted-foreground">Ask a store employee for current product availability and try this QR code again later.</p></div>}
       {flow === "welcome" && <div className="mx-auto max-w-lg px-5 py-9"><p className="text-sm text-violet-300">Welcome to AvaSmoke.Ai</p><h1 className="mt-2 text-4xl font-semibold tracking-[-.045em]">Find something available at {store.name}.</h1><div className="mt-8 grid gap-3 sm:grid-cols-2">{[[Sparkles, "Find My Match", "A few quick choices", "match"], [MessageCircle, "Ask AvaSmoke.Ai", "Type what you want", "chat"], [Camera, "Take a Picture", "Find a similar product", "camera"], [ShoppingBag, "Browse This Store", `${availableInventory.length} available products`, "browse"]].map(([Icon, title, note, target]) => <button key={title as string} onClick={() => setFlow(target as Flow)} className="flex min-h-28 items-center gap-4 rounded-3xl border bg-card/70 p-5 text-left transition hover:border-violet-300/35 hover:bg-card"><div className="grid size-11 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300">{<Icon className="size-5" />}</div><div><p className="font-medium">{title as string}</p><p className="mt-1 text-xs text-muted-foreground">{note as string}</p></div><ChevronRight className="ms-auto size-4 text-muted-foreground" /></button>)}</div><p className="mt-8 text-center text-xs text-muted-foreground">Adult-use retail guidance only · Ask store staff to confirm product details</p></div>}
       {flow === "match" && <MatchFlow inventory={availableInventory} onComplete={findMatches} />}
       {flow === "results" && <RecommendationResults results={recommendations} loading={recommendationLoading} compare={compare} onCompare={toggleCompare} />}
       {flow === "browse" && <BrowseView inventory={availableInventory} compare={compare} onCompare={toggleCompare} />}
       {flow === "chat" && <ChatView storeSlug={store.slug} qrCode={qrCode} />}
-      {flow === "camera" && <CameraView />}
+      {flow === "camera" && <CameraView storeSlug={store.slug} qrCode={qrCode} />}
       {flow === "compare" && <CompareView items={compare} />}
       {compare.length >= 2 && !["compare", "location", "age", "blocked", "denied"].includes(flow) && <Button className="fixed bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-full shadow-2xl" onClick={() => setFlow("compare")}><SlidersHorizontal /> Compare {compare.length}</Button>}
     </main>

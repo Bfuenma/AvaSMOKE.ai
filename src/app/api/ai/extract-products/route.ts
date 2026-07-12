@@ -41,6 +41,7 @@ export async function POST(request: Request) {
 
   const jobId = crypto.randomUUID();
   const urls: string[] = [];
+  const paths: string[] = [];
   for (const file of files) {
     const extension = file.type.split("/")[1] ?? "jpg";
     const path = `${admin.id}/${jobId}/${crypto.randomUUID()}.${extension}`;
@@ -48,15 +49,19 @@ export async function POST(request: Request) {
       .from("product-uploads")
       .upload(path, file, { contentType: file.type, upsert: false });
     if (uploadError) {
+      if (paths.length) {
+        await supabase.storage.from("product-uploads").remove(paths);
+      }
       return NextResponse.json({ error: "A product image could not be stored." }, { status: 500 });
     }
+    paths.push(path);
     const { data } = await supabase.storage
       .from("product-uploads")
       .createSignedUrl(path, 900);
     if (data?.signedUrl) urls.push(data.signedUrl);
   }
 
-  const { data: job } = await supabase
+  const { data: job, error: jobError } = await supabase
     .from("product_upload_jobs")
     .insert({
       id: jobId,
@@ -66,6 +71,13 @@ export async function POST(request: Request) {
     })
     .select("id")
     .single();
+  if (jobError || !job) {
+    await supabase.storage.from("product-uploads").remove(paths);
+    return NextResponse.json(
+      { error: "The extraction job could not be created." },
+      { status: 503 },
+    );
+  }
 
   try {
     const result = await extractProductsFromImages(urls);
@@ -76,7 +88,7 @@ export async function POST(request: Request) {
         extracted_data: result.products,
         completed_at: new Date().toISOString(),
       })
-      .eq("id", job?.id ?? jobId);
+      .eq("id", job.id);
     return NextResponse.json(result);
   } catch {
     await supabase
@@ -86,7 +98,7 @@ export async function POST(request: Request) {
         error_message: "AI extraction failed.",
         completed_at: new Date().toISOString(),
       })
-      .eq("id", job?.id ?? jobId);
+      .eq("id", job.id);
     return NextResponse.json({ error: "AI extraction is temporarily unavailable." }, { status: 503 });
   }
 }

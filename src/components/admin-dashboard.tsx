@@ -32,10 +32,15 @@ interface DashboardData {
     verifiedSessions: number;
     conversations: number;
     recommendations: number;
+    inventoryGaps: number;
+    matchCompletions: number;
+    outsideRadius: number;
+    positiveFeedbackRate: number;
   };
   stores: Array<{ name: string; scans: number; conversion: number }>;
   scanSeries: number[];
   topProducts: InventoryItem[];
+  developmentMode: boolean;
 }
 
 export function MetricCard({
@@ -99,7 +104,7 @@ export function AdminDashboard({ data }: { data: DashboardData }) {
         <MetricCard label="Verified sessions" value={data.metrics.verifiedSessions.toLocaleString()} note={`${verifiedRate}% of scans`} icon={CheckCircle2} />
         <MetricCard label="Conversations" value={data.metrics.conversations.toLocaleString()} note="Customer messages" icon={MessageSquareText} />
         <MetricCard label="Recommendations" value={data.metrics.recommendations.toLocaleString()} note="Top-three results" icon={Sparkles} />
-        <MetricCard label="Inventory gaps" value="18" note="5 high-frequency" icon={Boxes} />
+        <MetricCard label="Inventory gaps" value={data.metrics.inventoryGaps} note="Unmatched product requests" icon={Boxes} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
@@ -179,11 +184,14 @@ export function AdminDashboard({ data }: { data: DashboardData }) {
             <p className="text-sm text-muted-foreground">Unmet demand with sufficient signal</p>
           </CardHeader>
           <CardContent className="space-y-4">
-            {[
-              ["Mango · strong cooling", 42, "1 current match"],
-              ["Dessert · smooth", 27, "No current match"],
-              ["Under $20 · tropical", 21, "2 low-stock matches"],
-            ].map(([request, count, note]) => (
+            {(data.developmentMode
+              ? [
+                  ["Mango · strong cooling", 42, "1 current match"],
+                  ["Dessert · smooth", 27, "No current match"],
+                  ["Under $20 · tropical", 21, "2 low-stock matches"],
+                ]
+              : []
+            ).map(([request, count, note]) => (
               <div key={request} className="flex items-center justify-between border-b pb-4 last:border-0">
                 <div>
                   <p className="text-sm">{request}</p>
@@ -192,6 +200,11 @@ export function AdminDashboard({ data }: { data: DashboardData }) {
                 <Badge variant="secondary">{count} requests</Badge>
               </div>
             ))}
+            {!data.developmentMode && (
+              <p className="text-sm text-muted-foreground">
+                Opportunity details appear after unmatched product requests are collected.
+              </p>
+            )}
             <p className="text-xs leading-5 text-muted-foreground">
               Insights describe observed requests only. No revenue impact is estimated.
             </p>

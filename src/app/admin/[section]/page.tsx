@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { AdminSection } from "@/components/admin-sections";
+import { getAdminOverview, getAdminSectionRecords } from "@/lib/data";
 import { isDevelopmentFallback } from "@/lib/env";
 
 const sections = new Set([
@@ -24,10 +25,16 @@ export default async function AdminSectionPage({
 }) {
   const { section } = await params;
   if (!sections.has(section)) notFound();
+  const [overview, records] = await Promise.all([
+    section === "analytics" ? getAdminOverview() : null,
+    getAdminSectionRecords(section),
+  ]);
   return (
     <AdminSection
       section={section}
       developmentMode={isDevelopmentFallback}
+      analyticsMetrics={overview?.metrics}
+      records={records}
     />
   );
 }

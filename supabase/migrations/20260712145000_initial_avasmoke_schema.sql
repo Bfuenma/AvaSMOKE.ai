@@ -264,6 +264,34 @@ create table public.system_settings (
 );
 insert into public.system_settings (id) values (true);
 
+alter table public.qr_codes
+  add constraint qr_codes_id_shop_unique unique (id, shop_id);
+alter table public.customer_sessions
+  add constraint customer_sessions_id_shop_unique unique (id, shop_id),
+  add constraint customer_sessions_qr_shop_fk
+    foreign key (qr_code_id, shop_id)
+    references public.qr_codes(id, shop_id);
+alter table public.recommendations
+  add constraint recommendations_session_shop_fk
+    foreign key (session_id, shop_id)
+    references public.customer_sessions(id, shop_id);
+alter table public.conversations
+  add constraint conversations_session_shop_fk
+    foreign key (session_id, shop_id)
+    references public.customer_sessions(id, shop_id);
+alter table public.product_requests
+  add constraint product_requests_session_shop_fk
+    foreign key (session_id, shop_id)
+    references public.customer_sessions(id, shop_id);
+alter table public.customer_feedback
+  add constraint customer_feedback_session_shop_fk
+    foreign key (session_id, shop_id)
+    references public.customer_sessions(id, shop_id);
+alter table public.analytics_events
+  add constraint analytics_events_session_shop_fk
+    foreign key (session_id, shop_id)
+    references public.customer_sessions(id, shop_id);
+
 create index shops_status_idx on public.shops(status);
 create index shops_owner_idx on public.shops(owner_profile_id);
 create index applications_status_created_idx on public.shop_applications(status, created_at desc);
@@ -468,6 +496,13 @@ create policy "settings admin all" on public.system_settings for all to authenti
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('product-uploads', 'product-uploads', false, 8388608, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('customer-searches', 'customer-searches', false, 8388608, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set
   public = excluded.public,
   file_size_limit = excluded.file_size_limit,

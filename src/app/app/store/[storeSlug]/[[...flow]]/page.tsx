@@ -5,7 +5,7 @@ import { AvaSmokeWordmark } from "@/components/brand";
 import { CustomerExperience } from "@/components/customer-experience";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { getStorefront } from "@/lib/data";
+import { getStorefront, toCustomerStore } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -49,8 +49,7 @@ export default async function StoreExperiencePage({
 
   return (
     <CustomerExperience
-      store={storefront.shop}
-      inventory={storefront.inventory}
+      store={toCustomerStore(storefront.shop)}
       qrCode={storefront.qrCode.code}
       developmentMode={storefront.developmentMode}
     />
