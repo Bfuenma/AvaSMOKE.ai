@@ -507,6 +507,15 @@ function SettingsSection({
 }) {
   const isAi = section === "ai-settings";
   const isUsers = section === "users";
+  const aiConfig = (records[0] ?? {
+    provider: "mock",
+    model: null,
+    live: false,
+  }) as {
+    provider: "mock" | "openai" | "anthropic";
+    model: string | null;
+    live: boolean;
+  };
   const users = developmentMode
     ? [
         {
@@ -534,16 +543,18 @@ function SettingsSection({
           <TabsList><TabsTrigger value="general">{isAi ? "Provider" : "General"}</TabsTrigger><TabsTrigger value="rules">{isAi ? "Grounding" : "Privacy"}</TabsTrigger><TabsTrigger value="advanced">Advanced</TabsTrigger></TabsList>
           <TabsContent value="general"><Card className="max-w-3xl rounded-2xl bg-card/70"><CardContent className="space-y-6 p-6">
             {isAi ? <>
-              <Alert><Bot /><AlertDescription>AI keys are read only from server environment variables and are never returned to the browser.</AlertDescription></Alert>
-              <div className="space-y-2"><Label>Provider</Label><Select defaultValue="mock"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="mock">Mock mode</SelectItem><SelectItem value="openai">OpenAI</SelectItem><SelectItem value="anthropic">Anthropic</SelectItem></SelectContent></Select></div>
-              <div className="space-y-2"><Label>Model ID</Label><Input placeholder="Configured with AI_MODEL" disabled /></div>
+              <Alert><Bot /><AlertDescription>{aiConfig.live ? "Live AI is configured on the server." : "Mock mode is active until a valid server-side provider key and model are configured."} Keys are never returned to the browser.</AlertDescription></Alert>
+              <div className="space-y-2"><Label>Provider</Label><Input value={titleCase(aiConfig.provider)} readOnly /></div>
+              <div className="space-y-2"><Label>Model ID</Label><Input value={aiConfig.model ?? "Not configured"} readOnly /></div>
               <div className="flex items-center justify-between rounded-xl border p-4"><div><p className="text-sm">Require human review for product extraction</p><p className="text-xs text-muted-foreground">AI output can never publish silently.</p></div><Switch defaultChecked disabled /></div>
             </> : <>
               <div className="space-y-2"><Label>Minimum age</Label><Input type="number" defaultValue="21" /></div>
               <div className="space-y-2"><Label>Default access radius</Label><Select defaultValue="1"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="1">1 mile</SelectItem><SelectItem value=".5">0.5 mile</SelectItem><SelectItem value="2">2 miles</SelectItem></SelectContent></Select></div>
               <div className="flex items-center justify-between rounded-xl border p-4"><div><p className="text-sm">Show exact inventory quantity to customers</p><p className="text-xs text-muted-foreground">Stock status remains visible.</p></div><Switch /></div>
             </>}
-            <Button>Save settings</Button>
+            <Button disabled={isAi}>
+              {isAi ? "Managed by server environment" : "Save settings"}
+            </Button>
           </CardContent></Card></TabsContent>
           <TabsContent value="rules"><Card className="max-w-3xl rounded-2xl bg-card/70"><CardContent className="p-6 text-sm leading-7 text-muted-foreground">{isAi ? "Recommendations are restricted to active in-stock or low-stock inventory returned for the verified store. Missing specifications remain unavailable. Medical, health, safety, and youth-targeted claims are prohibited." : "Exact customer coordinates are used transiently to calculate distance and are not persisted. Anonymous interaction data supports store analytics. Product photos may be processed for identification."}</CardContent></Card></TabsContent>
         </Tabs>

@@ -5,7 +5,7 @@ import {
   developmentQr,
   developmentShop,
 } from "@/lib/development-data";
-import { isDevelopmentFallback } from "@/lib/env";
+import { env, isDevelopmentFallback } from "@/lib/env";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
@@ -231,6 +231,19 @@ export async function getAdminOverview() {
 }
 
 export async function getAdminSectionRecords(section: string): Promise<unknown[]> {
+  if (section === "ai-settings") {
+    return [
+      {
+        provider: env.AI_PROVIDER,
+        model: env.AI_MODEL ?? null,
+        live:
+          (env.AI_PROVIDER === "anthropic" &&
+            Boolean(env.ANTHROPIC_API_KEY && env.AI_MODEL)) ||
+          (env.AI_PROVIDER === "openai" &&
+            Boolean(env.OPENAI_API_KEY && env.AI_MODEL)),
+      },
+    ];
+  }
   if (isDevelopmentFallback) return [];
   const supabase = await createSupabaseServerClient();
   if (!supabase) return [];

@@ -69,6 +69,11 @@ Set `AI_PROVIDER` to `openai`, `anthropic`, or `mock`, and set an explicit
 missing, extraction and chat return clearly labeled mock-mode output rather
 than pretending analysis succeeded.
 
+For direct Anthropic access, use `AI_PROVIDER=anthropic`,
+`AI_MODEL=claude-sonnet-4-6`, and store `ANTHROPIC_API_KEY` in `.env.local` or
+the deployment platform’s encrypted environment settings. Never prefix the key
+with `NEXT_PUBLIC_`, paste it into source code, or commit it.
+
 The recommendation ranker is deterministic and filters out hidden,
 out-of-stock, and inactive products before AI is called. AI may explain
 eligible results but cannot add or reorder products.
