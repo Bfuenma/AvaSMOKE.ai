@@ -1,0 +1,92 @@
+import type { InventoryItem, QRCode, Shop } from "@/lib/types";
+
+export const developmentShop: Shop = {
+  id: "11111111-1111-4111-8111-111111111111",
+  name: "Northstar Smoke & Vape",
+  slug: "northstar-smoke-vape",
+  description: "Development fixture store",
+  email: "northstar@example.test",
+  phone: "(312) 555-0142",
+  address_line_1: "401 N State St",
+  address_line_2: null,
+  city: "Chicago",
+  state: "IL",
+  postal_code: "60654",
+  latitude: 41.8897,
+  longitude: -87.6278,
+  allowed_radius_miles: 1,
+  business_hours: {
+    monday: "9:00 AM – 10:00 PM",
+    tuesday: "9:00 AM – 10:00 PM",
+    wednesday: "9:00 AM – 10:00 PM",
+    thursday: "9:00 AM – 10:00 PM",
+    friday: "9:00 AM – 11:00 PM",
+    saturday: "9:00 AM – 11:00 PM",
+    sunday: "10:00 AM – 8:00 PM",
+  },
+  status: "active",
+};
+
+const catalog = [
+  ["AeroBar", "Mango Glacier", "Tropical", 8, 7, 6, 20000, 24.99],
+  ["AeroBar", "Strawberry Cloud", "Fruity", 4, 8, 5, 20000, 24.99],
+  ["Lumen", "Mint Reserve", "Mint", 9, 2, 7, 15000, 21.99],
+  ["Lumen", "Blue Razz Current", "Candy", 7, 9, 8, 15000, 22.99],
+  ["North", "Vanilla Tobacco", "Tobacco", 1, 5, 7, 12000, 19.99],
+  ["North", "Peach Tea", "Beverage", 3, 6, 4, 12000, 18.99],
+  ["Vela", "Pineapple Splash", "Tropical", 6, 7, 6, 25000, 29.99],
+  ["Vela", "Iced Grape", "Fruity", 9, 8, 8, 25000, 29.99],
+] as const;
+
+export const developmentInventory: InventoryItem[] = catalog.map(
+  ([brand, flavor, family, cooling, sweetness, strength, puffs, price], index) => ({
+    id: `inventory-${index + 1}`,
+    shop_id: developmentShop.id,
+    product_id: `product-${index + 1}`,
+    internal_sku: `DEV-${String(index + 1).padStart(3, "0")}`,
+    price,
+    sale_price: index === 5 ? 16.99 : null,
+    stock_status: index === 3 ? "low_stock" : "in_stock",
+    quantity: 10 + index,
+    featured: index === 0 || index === 6,
+    staff_pick: index === 1 || index === 4,
+    recommendation_priority: index === 0 ? 2 : 0,
+    product: {
+      id: `product-${index + 1}`,
+      brand_id: `brand-${brand.toLowerCase()}`,
+      brand_name: brand,
+      product_name: `${brand} ${flavor}`,
+      flavor_name: flavor,
+      category: "Disposable",
+      nicotine_percentage: 5,
+      nicotine_mg: 50,
+      puff_count: puffs,
+      flavor_family: family,
+      sweetness_level: sweetness,
+      cooling_level: cooling,
+      hit_strength: strength,
+      expected_duration_text: "Varies by usage",
+      rechargeable: true,
+      device_type: "Disposable device",
+      description: `${flavor} flavor profile with ${family.toLowerCase()} notes.`,
+      primary_image_url: null,
+      verification_status: "admin_verified",
+      active: true,
+    },
+  }),
+);
+
+export const developmentQr: QRCode = {
+  id: "33333333-3333-4333-8333-333333333333",
+  shop_id: developmentShop.id,
+  code: "demo-northstar",
+  label: "Front entrance",
+  destination_path:
+    "/app/store/northstar-smoke-vape?qr=demo-northstar",
+  qr_type: "store",
+  product_id: null,
+  active: true,
+  scan_radius_override: null,
+  total_scans: 1284,
+  last_scanned_at: new Date().toISOString(),
+};
