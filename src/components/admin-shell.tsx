@@ -17,7 +17,6 @@ import {
   PackageSearch,
   QrCode,
   Settings,
-  SlidersHorizontal,
   Store,
   Upload,
   Users,
@@ -116,7 +115,7 @@ export function AdminShell({
           )}
         >
           {collapsed ? (
-            <span className="text-xl font-semibold text-violet-300">A.</span>
+            <AvaSmokeWordmark animated={false} className="text-[10px]" />
           ) : (
             <AvaSmokeWordmark className="text-xl" />
           )}

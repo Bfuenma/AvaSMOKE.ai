@@ -4,23 +4,18 @@ import { useMemo, useState } from "react";
 import {
   Activity,
   Archive,
-  BarChart3,
   Bot,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
-  Clock3,
   Download,
   Filter,
-  KeyRound,
   MapPin,
   MoreHorizontal,
   PackagePlus,
   Plus,
   Search,
   ShieldCheck,
-  Store,
-  Users,
 } from "lucide-react";
 
 import { MetricCard } from "@/components/admin-dashboard";

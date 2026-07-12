@@ -47,12 +47,15 @@ export function BrandIntroAnimation() {
 
   useEffect(() => {
     if (sessionStorage.getItem("avasmoke-intro-seen")) return;
-    setVisible(true);
+    const frame = window.requestAnimationFrame(() => setVisible(true));
     const timeout = window.setTimeout(() => {
       sessionStorage.setItem("avasmoke-intro-seen", "true");
       setVisible(false);
     }, 1800);
-    return () => window.clearTimeout(timeout);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
   }, []);
 
   if (!visible) return null;

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { developmentInventory, developmentShop } from "@/lib/development-data";
-import { haversineMiles, verifyRadius } from "@/lib/location";
-import { scoreInventory, topRecommendations } from "@/lib/recommendations";
+import { developmentInventory, developmentShop } from "./development-data";
+import { haversineMiles, verifyRadius } from "./location";
+import { scoreInventory, topRecommendations } from "./recommendations";
 
 describe("location verification", () => {
   it("returns zero at the store coordinates", () => {

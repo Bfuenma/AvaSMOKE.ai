@@ -32,12 +32,12 @@ export default function LoginPage() {
                   Development preview mode is active because Supabase is not
                   configured.
                 </div>
-                <a
+                <Link
                   href="/admin"
                   className="flex h-12 items-center justify-center rounded-xl bg-primary px-4 text-sm font-medium"
                 >
                   Open development dashboard
-                </a>
+                </Link>
               </div>
             ) : (
               <LoginForm />

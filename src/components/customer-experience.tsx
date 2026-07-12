@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import {
   ArrowLeft,
   ArrowRight,
@@ -9,8 +8,6 @@ import {
   Check,
   ChevronRight,
   Compass,
-  Heart,
-  ImagePlus,
   Loader2,
   LocateFixed,
   MapPin,
@@ -22,11 +19,9 @@ import {
   SlidersHorizontal,
   Sparkles,
   Users,
-  X,
 } from "lucide-react";
 
 import { AvaSmokeWordmark } from "@/components/brand";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -217,6 +212,10 @@ function MatchFlow({
   ] as const;
   const isBudget = step === 4;
   const question = matchQuestions[step];
+  const questionValues =
+    !isBudget && question && "values" in question
+      ? question.values
+      : undefined;
 
   function select(index: number, label: string, value?: number) {
     if (isBudget) {
@@ -232,11 +231,19 @@ function MatchFlow({
           : [...current.flavorFamilies, label],
       }));
     } else {
-      setPreferences((current) => ({ ...current, [question.key]: question.values?.[index] ?? label }));
+      setPreferences((current) => ({
+        ...current,
+        [question.key]: questionValues?.[index] ?? label,
+      }));
     }
   }
 
-  const choices = isBudget ? budgets.map(([label, value]) => ({ label, value })) : question.choices.map((label, index) => ({ label, value: question.values?.[index] }));
+  const choices = isBudget
+    ? budgets.map(([label, value]) => ({ label, value }))
+    : question.choices.map((label, index) => ({
+        label,
+        value: questionValues?.[index],
+      }));
   const selected = (label: string, value?: number) => {
     if (isBudget) return preferences.budgetMax === value;
     if (question.key === "flavorFamilies") return preferences.flavorFamilies.includes(label);
