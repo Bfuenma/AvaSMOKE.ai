@@ -1,0 +1,20 @@
+# dependencies and builds
+/node_modules
+/.next
+/out
+/coverage
+
+# local configuration
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# editors and operating systems
+.DS_Store
+*.pem
+*.log
+
+# Supabase local state
+/supabase/.branches
+/supabase/.temp
